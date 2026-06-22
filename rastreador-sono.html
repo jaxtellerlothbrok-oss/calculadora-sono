@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rastreador de Sono</title>
+<script>
+(function(){
+  const c=document.createElement('canvas');c.width=180;c.height=180;
+  const ctx=c.getContext('2d');
+  // Background
+  const bg=ctx.createRadialGradient(90,90,0,90,90,90);
+  bg.addColorStop(0,'#1B1E35');bg.addColorStop(1,'#0D0F1A');
+  ctx.fillStyle=bg;ctx.beginPath();ctx.roundRect(0,0,180,180,36);ctx.fill();
+  // Small stars
+  ctx.fillStyle='rgba(255,213,128,0.55)';
+  [[28,30,3],[148,44,2.5],[38,148,2],[152,138,3],[80,24,2]].forEach(([x,y,r])=>{
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+  });
+  // Moon crescent
+  ctx.save();ctx.translate(90,90);
+  ctx.shadowColor='rgba(255,213,128,0.7)';ctx.shadowBlur=22;
+  // Outer circle
+  const moonGrad=ctx.createRadialGradient(-10,-10,5,0,0,52);
+  moonGrad.addColorStop(0,'#fff9d0');moonGrad.addColorStop(0.5,'#FFD580');moonGrad.addColorStop(1,'#c89a2e');
+  ctx.fillStyle=moonGrad;
+  ctx.beginPath();ctx.arc(0,0,52,0,Math.PI*2);ctx.fill();
+  // Cut-out for crescent
+  ctx.globalCompositeOperation='destination-out';
+  ctx.beginPath();ctx.arc(22,-12,44,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+  const link=document.createElement('link');
+  link.rel='apple-touch-icon';link.href=c.toDataURL('image/png');
+  document.head.appendChild(link);
+})();
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#0D0F1A;
+  --surface:#131629;
+  --card:#181B30;
+  --card2:#1E2140;
+  --border:#252844;
+  --border2:#2F335A;
+  --accent:#7C6AF7;
+  --accent-soft:#A99CF7;
+  --accent-glow:rgba(124,106,247,0.25);
+  --moon:#FFD580;
+  --moon-glow:rgba(255,213,128,0.15);
+  --text:#EAE6FF;
+  --text2:#B8B4D4;
+  --muted:#6A6890;
+  --green:#5CE8B5;
+  --green-bg:rgba(92,232,181,0.1);
+  --yellow:#FFD580;
+  --yellow-bg:rgba(255,213,128,0.1);
+  --pink:#F087C3;
+  --pink-bg:rgba(240,135,195,0.1);
+  --red:#FF6B7A;
+  --red-bg:rgba(255,107,122,0.1);
+}
+
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;padding:0;overflow-x:hidden}
+
+/* Stars */
+#stars{position:fixed;inset:0;z-index:0;pointer-events:none}
+.star{position:absolute;border-radius:50%;background:#fff;animation:twinkle var(--d) ease-in-out infinite;opacity:0}
+@keyframes twinkle{0%,100%{opacity:0}50%{opacity:var(--op)}}
+
+/* Layout */
+.app{position:relative;z-index:1;max-width:640px;margin:0 auto;padding:0 0 100px}
+
+/* Header */
+.header{padding:32px 20px 0;display:flex;align-items:center;gap:14px}
+.moon-small{width:44px;height:44px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff9d0,var(--moon) 60%,#c89a2e);box-shadow:0 0 24px var(--moon-glow);animation:float 6s ease-in-out infinite;flex-shrink:0}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.header-text h1{font-family:'DM Serif Display',serif;font-size:1.5rem;line-height:1.1}
+.header-text h1 em{font-style:italic;color:var(--accent-soft)}
+.header-text p{font-size:0.78rem;color:var(--muted);margin-top:3px}
+
+/* Nav tabs */
+.nav{display:flex;gap:4px;padding:20px 20px 0;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav-btn{flex-shrink:0;padding:9px 16px;border:none;border-radius:10px;background:transparent;color:var(--muted);font-family:'Inter',sans-serif;font-size:0.8rem;font-weight:500;cursor:pointer;transition:all 0.2s;white-space:nowrap}
+.nav-btn.active{background:var(--accent);color:#fff;box-shadow:0 2px 14px var(--accent-glow)}
+.nav-btn:not(.active):hover{background:var(--card);color:var(--text2)}
+
+/* Sections */
+.section{display:none;padding:20px}
+.section.active{display:block;animation:fadeUp 0.3s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px}
+.card+.card{margin-top:14px}
+.card-title{font-size:0.68rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent-soft);margin-bottom:14px}
+
+/* Form elements */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:0.78rem;color:var(--text2);margin-bottom:7px;font-weight:500}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.input-wrap{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 14px;transition:border-color 0.2s}
+.input-wrap:focus-within{border-color:var(--accent)}
+.input-wrap .icon{font-size:1.1rem;flex-shrink:0}
+.input-wrap input{background:transparent;border:none;outline:none;color:var(--text);font-family:'Inter',sans-serif;font-size:1.05rem;font-weight:400;width:100%}
+.input-wrap input[type=time]::-webkit-calendar-picker-indicator{filter:invert(0.5) sepia(1) saturate(3) hue-rotate(220deg);cursor:pointer}
+.input-wrap input[type=number]{-moz-appearance:textfield}
+.input-wrap input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+
+/* Toggle switch */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none;padding-bottom:0}
+.toggle-row .tl{font-size:0.85rem;color:var(--text2)}
+.toggle-row .tl small{display:block;font-size:0.72rem;color:var(--muted);margin-top:2px}
+.toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:var(--border2);border-radius:999px;cursor:pointer;transition:0.2s}
+.slider::before{content:'';position:absolute;height:16px;width:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:0.2s}
+.toggle input:checked+.slider{background:var(--accent)}
+.toggle input:checked+.slider::before{transform:translateX(18px)}
+
+/* Interruption block */
+.interrupt-block{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:4px}
+.interrupt-block .card-title{margin-bottom:10px}
+
+/* Primary button */
+.btn-primary{width:100%;padding:14px;background:var(--accent);border:none;border-radius:12px;color:#fff;font-family:'Inter',sans-serif;font-size:0.92rem;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 20px var(--accent-glow);letter-spacing:0.02em;margin-top:4px}
+.btn-primary:hover{background:#6a58e8;transform:translateY(-1px)}
+.btn-primary:active{transform:translateY(0)}
+.btn-secondary{padding:10px 18px;background:transparent;border:1px solid var(--border2);border-radius:10px;color:var(--text2);font-family:'Inter',sans-serif;font-size:0.82rem;cursor:pointer;transition:all 0.2s}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent-soft)}
+.btn-danger{padding:8px 14px;background:var(--red-bg);border:1px solid rgba(255,107,122,0.3);border-radius:8px;color:var(--red);font-family:'Inter',sans-serif;font-size:0.78rem;cursor:pointer;transition:all 0.2s}
+.btn-danger:hover{background:rgba(255,107,122,0.2)}
+
+/* Result box */
+.result-box{display:none;animation:fadeUp 0.35s ease}
+.result-box.show{display:block}
+.result-box .card{border-color:rgba(124,106,247,0.35);background:rgba(124,106,247,0.06)}
+.result-big{font-family:'DM Serif Display',serif;font-size:2.8rem;color:var(--text);line-height:1}
+.result-big span{font-size:1rem;color:var(--muted);font-family:'Inter',sans-serif;font-weight:300}
+.result-meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.badge{padding:5px 12px;border-radius:999px;font-size:0.75rem;font-weight:500}
+.badge-green{background:var(--green-bg);color:var(--green)}
+.badge-yellow{background:var(--yellow-bg);color:var(--yellow)}
+.badge-red{background:var(--red-bg);color:var(--red)}
+.badge-purple{background:rgba(124,106,247,0.12);color:var(--accent-soft)}
+.result-breakdown{margin-top:14px;border-top:1px solid var(--border);padding-top:14px}
+.breakdown-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:0.82rem;color:var(--text2)}
+.breakdown-row strong{color:var(--text)}
+
+/* Alarm section */
+.alarm-set{display:flex;gap:10px;align-items:flex-end}
+.alarm-set .input-wrap{flex:1}
+.alarm-active{display:flex;align-items:center;justify-content:space-between;background:rgba(92,232,181,0.07);border:1px solid rgba(92,232,181,0.25);border-radius:12px;padding:14px 16px;margin-top:12px}
+.alarm-active-info{font-size:0.85rem;color:var(--text2)}
+.alarm-active-info strong{display:block;font-size:1.1rem;color:var(--green)}
+.alarm-ringing{animation:ring-pulse 0.5s ease-in-out infinite alternate}
+@keyframes ring-pulse{from{box-shadow:0 0 0 0 rgba(92,232,181,0.4)}to{box-shadow:0 0 0 14px rgba(92,232,181,0)}}
+
+/* ── DASHBOARD ── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+.stat-label{font-size:0.68rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.stat-value{font-family:'DM Serif Display',serif;font-size:1.8rem;line-height:1}
+.stat-value.good{color:var(--green)}
+.stat-value.ok{color:var(--yellow)}
+.stat-value.bad{color:var(--red)}
+.stat-sub{font-size:0.72rem;color:var(--muted);margin-top:4px}
+
+/* Bar chart */
+.chart-wrap{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px}
+.chart-title{font-size:0.68rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent-soft);margin-bottom:16px}
+.bar-chart{display:flex;align-items:flex-end;gap:8px;height:140px}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%}
+.bar-val{font-size:0.65rem;color:var(--muted);height:14px;display:flex;align-items:center}
+.bar-outer{flex:1;width:100%;display:flex;align-items:flex-end;border-radius:6px}
+.bar-inner{width:100%;border-radius:6px 6px 0 0;transition:height 0.6s cubic-bezier(.34,1.56,.64,1);min-height:2px;position:relative}
+.bar-inner::after{content:attr(data-tip);position:absolute;bottom:calc(100%+6px);left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:0.7rem;color:var(--text);white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.2s}
+.bar-inner:hover::after{opacity:1}
+.bar-day{font-size:0.68rem;color:var(--muted)}
+.chart-legend{display:flex;gap:16px;margin-top:12px;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--muted)}
+.legend-dot{width:8px;height:8px;border-radius:2px}
+
+/* Trend line */
+.trend-info{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.trend-label{font-size:0.78rem;color:var(--text2)}
+.week-nav{display:flex;align-items:center;gap:10px}
+.week-nav button{background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);padding:5px 10px;cursor:pointer;font-size:0.8rem;transition:all 0.2s}
+.week-nav button:hover{border-color:var(--accent);color:var(--accent-soft)}
+.week-nav span{font-size:0.78rem;color:var(--text2);min-width:90px;text-align:center}
+
+/* Empty state */
+.empty{text-align:center;padding:48px 20px;color:var(--muted)}
+.empty-icon{font-size:2.5rem;margin-bottom:12px}
+.empty p{font-size:0.85rem;line-height:1.6}
+
+/* ── HISTORY ── */
+.history-controls{display:flex;gap:8px;margin-bottom:14px;justify-content:space-between;align-items:center}
+.history-list{display:flex;flex-direction:column;gap:8px}
+.history-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+.history-item:hover{border-color:var(--border2)}
+.hi-left{}
+.hi-date{font-size:0.72rem;color:var(--muted);margin-bottom:3px}
+.hi-times{font-size:0.82rem;color:var(--text2)}
+.hi-right{display:flex;align-items:center;gap:10px}
+.hi-hours{font-family:'DM Serif Display',serif;font-size:1.4rem;color:var(--text)}
+.hi-del{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.9rem;padding:4px;border-radius:6px;transition:color 0.2s}
+.hi-del:hover{color:var(--red)}
+
+/* ── CYCLES EDUCATION ── */
+.cycle-visual{display:flex;gap:0;margin:16px 0;overflow-x:auto;padding-bottom:8px}
+.cycle-block{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;width:72px}
+.cycle-arc{width:56px;height:28px;border-radius:28px 28px 0 0;border:2px solid var(--border);border-bottom:none;display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:var(--muted);position:relative}
+.cycle-arc.rem{border-color:var(--accent);background:rgba(124,106,247,0.08)}
+.cycle-arc.light{border-color:var(--green);background:rgba(92,232,181,0.06)}
+.cycle-arc.deep{border-color:var(--moon);background:rgba(255,213,128,0.06)}
+.cycle-arc.wake{border-color:var(--pink);background:rgba(240,135,195,0.06)}
+.cycle-name{font-size:0.62rem;color:var(--muted);text-align:center}
+.stage-legend{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.stage-item{display:flex;gap:10px;padding:10px 12px;background:var(--surface);border-radius:10px;border:1px solid var(--border)}
+.stage-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;margin-top:3px}
+.stage-info{}
+.stage-name{font-size:0.78rem;font-weight:600;color:var(--text2)}
+.stage-desc{font-size:0.7rem;color:var(--muted);margin-top:2px;line-height:1.4}
+.info-text{font-size:0.82rem;color:var(--text2);line-height:1.7;margin-top:10px}
+.info-text strong{color:var(--accent-soft)}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--card2);border:1px solid var(--border2);border-radius:12px;padding:12px 20px;font-size:0.82rem;color:var(--text);z-index:100;transition:transform 0.3s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+</style>
+</head>
+<body>
+
+<div id="stars"></div>
+
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="moon-small"></div>
+    <div class="header-text">
+      <h1>Diário de <em>Sono</em></h1>
+      <p>Registre, analise e melhore seu descanso</p>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <div class="nav">
+    <button class="nav-btn active" onclick="goTab('registrar')">📝 Registrar</button>
+    <button class="nav-btn" onclick="goTab('dashboard')">📊 Dashboard</button>
+    <button class="nav-btn" onclick="goTab('historico')">🗓 Histórico</button>
+    <button class="nav-btn" onclick="goTab('alarme')">⏰ Alarme</button>
+    <button class="nav-btn" onclick="goTab('ciclos')">🔬 Ciclos</button>
+  </div>
+
+  <!-- ═══════════════ REGISTRAR ═══════════════ -->
+  <div class="section active" id="tab-registrar">
+
+    <div class="card">
+      <div class="card-title">Data da noite</div>
+      <div class="field">
+        <div class="input-wrap">
+          <span class="icon">📅</span>
+          <input type="date" id="reg-date">
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">Horários de sono</div>
+
+      <div class="field">
+        <label>Hora que foi deitar (apagou a luz)</label>
+        <div class="input-wrap">
+          <span class="icon">🌙</span>
+          <input type="time" id="reg-bed">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Minutos até adormecer</label>
+        <div class="input-wrap">
+          <span class="icon">💤</span>
+          <input type="number" id="reg-latency" value="14" min="0" max="120" placeholder="14">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Hora que acordou para levantar</label>
+        <div class="input-wrap">
+          <span class="icon">☀️</span>
+          <input type="time" id="reg-wake">
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="toggle-row">
+        <div class="tl">
+          Acordei de madrugada
+          <small>Houve interrupção do sono?</small>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="tog-interrupt" onchange="toggleInterrupt(this)">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div id="interrupt-block" style="display:none;margin-top:12px" class="interrupt-block">
+        <div class="card-title">Interrupção do sono</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Hora que acordou</label>
+            <div class="input-wrap">
+              <span class="icon">😴</span>
+              <input type="time" id="reg-int-wake">
+            </div>
+          </div>
+          <div class="field">
+            <label>Hora que dormiu de novo</label>
+            <div class="input-wrap">
+              <span class="icon">🌛</span>
+              <input type="time" id="reg-int-sleep">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <button class="btn-primary" onclick="calcSleep()">Calcular e salvar noite</button>
+    </div>
+
+    <!-- Result -->
+    <div class="result-box" id="result-box" style="margin-top:16px">
+      <div class="card">
+        <div class="card-title">Resultado da noite</div>
+        <div class="result-big" id="res-total">0h 00min</div>
+        <div class="result-meta" id="res-badges"></div>
+        <div class="result-breakdown" id="res-breakdown"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════ DASHBOARD ═══════════════ -->
+  <div class="section" id="tab-dashboard">
+
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card"><div class="stat-label">Média semanal</div><div class="stat-value" id="s-avg">—</div><div class="stat-sub" id="s-avg-sub">sem dados</div></div>
+      <div class="stat-card"><div class="stat-label">Melhor noite</div><div class="stat-value good" id="s-best">—</div><div class="stat-sub" id="s-best-sub"></div></div>
+      <div class="stat-card"><div class="stat-label">Pior noite</div><div class="stat-value bad" id="s-worst">—</div><div class="stat-sub" id="s-worst-sub"></div></div>
+      <div class="stat-card"><div class="stat-label">Noites registradas</div><div class="stat-value" id="s-count">0</div><div class="stat-sub">no total</div></div>
+    </div>
+
+    <div class="chart-wrap" id="chart-wrap">
+      <div class="trend-info">
+        <div class="chart-title" style="margin-bottom:0">Horas dormidas</div>
+        <div class="week-nav">
+          <button onclick="changeWeek(-1)">‹</button>
+          <span id="week-label">Esta semana</span>
+          <button onclick="changeWeek(1)">›</button>
+        </div>
+      </div>
+      <div style="margin-top:16px" id="chart-container">
+        <div class="empty"><div class="empty-icon">📊</div><p>Registre noites de sono para ver o gráfico aparecer aqui.</p></div>
+      </div>
+      <div class="chart-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>≥7h ideal</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div>5–7h ok</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>&lt;5h curto</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════ HISTÓRICO ═══════════════ -->
+  <div class="section" id="tab-historico">
+    <div class="history-controls">
+      <span style="font-size:0.82rem;color:var(--muted)" id="hist-count">0 registros</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary" onclick="exportCSV()">⬇ Exportar CSV</button>
+        <button class="btn-danger" onclick="clearAll()">Limpar tudo</button>
+      </div>
+    </div>
+    <div class="history-list" id="history-list">
+      <div class="empty"><div class="empty-icon">🗓</div><p>Nenhuma noite registrada ainda.<br>Vá para a aba Registrar para começar.</p></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ ALARME ═══════════════ -->
+  <div class="section" id="tab-alarme">
+    <div class="card">
+      <div class="card-title">Configurar alarme</div>
+      <div class="field">
+        <label>Horário do alarme</label>
+        <div class="alarm-set">
+          <div class="input-wrap">
+            <span class="icon">⏰</span>
+            <input type="time" id="alarm-time">
+          </div>
+          <button class="btn-secondary" onclick="setAlarm()">Ativar</button>
+        </div>
+      </div>
+      <div id="alarm-status"></div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">Volume e teste</div>
+      <div class="field">
+        <label>Volume <span id="vol-label">70%</span></label>
+        <input type="range" id="alarm-vol" min="0" max="100" value="70" oninput="document.getElementById('vol-label').textContent=this.value+'%'" style="width:100%;accent-color:var(--accent);margin-top:6px">
+      </div>
+      <button class="btn-secondary" onclick="testAlarm()" style="margin-top:4px">🔊 Testar som</button>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">Como funciona</div>
+      <p class="info-text">O alarme usa o <strong>áudio do navegador</strong> — sem precisar de permissões extras. Ele toca mesmo com a aba em segundo plano, desde que o navegador esteja aberto.<br><br>
+      <strong>Dica:</strong> Para garantir que toque ao acordar, deixe esta aba aberta ou use o modo "não perturbe" desativado no celular.</p>
+    </div>
+  </div>
+
+  <!-- ═══════════════ CICLOS ═══════════════ -->
+  <div class="section" id="tab-ciclos">
+
+    <div class="card">
+      <div class="card-title">O que é um ciclo de sono?</div>
+      <p class="info-text">Enquanto dormimos, o cérebro passa por <strong>ciclos de 90 minutos</strong> que se repetem 4 a 6 vezes por noite. Cada ciclo contém estágios bem distintos:</p>
+
+      <div class="cycle-visual">
+        <div class="cycle-block"><div class="cycle-arc light">N1</div><div class="cycle-name">Sono Leve</div></div>
+        <div class="cycle-block"><div class="cycle-arc light">N2</div><div class="cycle-name">Sono Leve</div></div>
+        <div class="cycle-block"><div class="cycle-arc deep">N3</div><div class="cycle-name">Sono Profundo</div></div>
+        <div class="cycle-block"><div class="cycle-arc rem">REM</div><div class="cycle-name">Sono REM</div></div>
+        <div style="display:flex;align-items:center;padding-bottom:28px;color:var(--muted);font-size:1.2rem">→</div>
+        <div class="cycle-block"><div class="cycle-arc light">N1</div><div class="cycle-name">Próximo ciclo</div></div>
+      </div>
+
+      <div class="stage-legend">
+        <div class="stage-item">
+          <div class="stage-dot" style="background:var(--green)"></div>
+          <div class="stage-info"><div class="stage-name">N1 — Sono Leve</div><div class="stage-desc">Transição vigília→sono. Fácil de acordar. Dura 5–10 min.</div></div>
+        </div>
+        <div class="stage-item">
+          <div class="stage-dot" style="background:#5CB8E8"></div>
+          <div class="stage-info"><div class="stage-name">N2 — Sono Leve</div><div class="stage-desc">Temperatura cai, ritmo cardíaco desacelera. Dura ~20 min.</div></div>
+        </div>
+        <div class="stage-item">
+          <div class="stage-dot" style="background:var(--moon)"></div>
+          <div class="stage-info"><div class="stage-name">N3 — Sono Profundo</div><div class="stage-desc">Reparação física e imunológica. O mais restaurador. Dura 20–40 min.</div></div>
+        </div>
+        <div class="stage-item">
+          <div class="stage-dot" style="background:var(--accent)"></div>
+          <div class="stage-info"><div class="stage-name">REM — Sonhos</div><div class="stage-desc">Consolidação da memória, aprendizado, emoções. Aumenta a cada ciclo.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">Por que acordar no fim de um ciclo?</div>
+      <p class="info-text">Acordar no <strong>meio de um ciclo</strong> — especialmente no sono profundo (N3) — causa a chamada <strong>inércia do sono</strong>: aquela sensação de que o mundo afundou e você não consegue sair da cama.<br><br>
+      Acordar <strong>ao final de um ciclo</strong>, quando o sono está mais leve (N1/N2), faz você se sentir naturalmente mais descansado — mesmo com menos horas totais.<br><br>
+      Por isso a calculadora usa ciclos de <strong>90 minutos</strong> como unidade base.</p>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">Quanto sono você precisa?</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border-radius:10px">
+          <span style="font-size:0.82rem;color:var(--text2)">👶 Bebês (0–1 ano)</span>
+          <span class="badge badge-purple">12–16h</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border-radius:10px">
+          <span style="font-size:0.82rem;color:var(--text2)">🧒 Crianças (6–12)</span>
+          <span class="badge badge-purple">9–12h</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border-radius:10px">
+          <span style="font-size:0.82rem;color:var(--text2)">🧑 Adolescentes</span>
+          <span class="badge badge-purple">8–10h</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border-radius:10px">
+          <span style="font-size:0.82rem;color:var(--text2)">🧑‍💼 Adultos (18–64)</span>
+          <span class="badge badge-green">7–9h</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border-radius:10px">
+          <span style="font-size:0.82rem;color:var(--text2)">👴 Idosos (65+)</span>
+          <span class="badge badge-yellow">7–8h</span>
+        </div>
+      </div>
+      <p class="info-text" style="margin-top:12px">Fonte: <strong>National Sleep Foundation</strong> e <strong>American Academy of Sleep Medicine</strong>.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── Stars ───────────────────────────────────────────────────────────────────
+const starsEl = document.getElementById('stars');
+for(let i=0;i<100;i++){
+  const s=document.createElement('div');s.className='star';
+  const sz=Math.random()*2.5+0.5;
+  s.style.cssText=`width:${sz}px;height:${sz}px;top:${Math.random()*100}%;left:${Math.random()*100}%;--d:${2+Math.random()*4}s;--op:${0.15+Math.random()*0.65};animation-delay:${Math.random()*5}s`;
+  starsEl.appendChild(s);
+}
+
+// ─── Storage ─────────────────────────────────────────────────────────────────
+function loadRecords(){try{return JSON.parse(localStorage.getItem('sono_records')||'[]')}catch{return[]}}
+function saveRecords(r){localStorage.setItem('sono_records',JSON.stringify(r))}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+let records=loadRecords();
+let currentWeekOffset=0;
+let alarmTimeout=null;
+let alarmAudioCtx=null;
+
+// Set today's date as default
+const today=new Date();
+document.getElementById('reg-date').value=today.toISOString().split('T')[0];
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+function goTab(id){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if(id==='dashboard')renderDashboard();
+  if(id==='historico')renderHistory();
+}
+
+// ─── Toggle interrupt ─────────────────────────────────────────────────────────
+function toggleInterrupt(cb){
+  document.getElementById('interrupt-block').style.display=cb.checked?'block':'none';
+}
+
+// ─── Time math ───────────────────────────────────────────────────────────────
+function timeToMins(t){if(!t)return null;const[h,m]=t.split(':').map(Number);return h*60+m}
+function minsToHHMM(m){const h=Math.floor(Math.abs(m)/60);const mn=Math.abs(m)%60;return`${h}h ${String(mn).padStart(2,'0')}min`}
+function diffMins(start,end){
+  let d=end-start;
+  if(d<0)d+=1440;
+  return d;
+}
+function formatDisplayTime(t){
+  if(!t)return'—';
+  const[h,m]=t.split(':').map(Number);
+  const ap=h>=12?'PM':'AM';const h12=h%12||12;
+  return`${h12}:${String(m).padStart(2,'0')} ${ap}`;
+}
+
+// ─── Calculate sleep ─────────────────────────────────────────────────────────
+function calcSleep(){
+  const date=document.getElementById('reg-date').value;
+  const bed=document.getElementById('reg-bed').value;
+  const latency=parseInt(document.getElementById('reg-latency').value)||14;
+  const wake=document.getElementById('reg-wake').value;
+  const hasInterrupt=document.getElementById('tog-interrupt').checked;
+  const intWake=document.getElementById('reg-int-wake').value;
+  const intSleep=document.getElementById('reg-int-sleep').value;
+
+  if(!bed||!wake){showToast('⚠️ Preencha pelo menos os horários de dormir e acordar.');return;}
+
+  const bedMins=timeToMins(bed);
+  const wakeMins=timeToMins(wake);
+  let asleepAt=bedMins+latency;
+
+  // Total window from falling asleep to final wake
+  let totalAsleep=diffMins(asleepAt,wakeMins);
+
+  // Subtract interruption
+  let interruptMins=0;
+  if(hasInterrupt&&intWake&&intSleep){
+    const iw=timeToMins(intWake);const is=timeToMins(intSleep);
+    interruptMins=diffMins(iw,is);
+    if(interruptMins>totalAsleep)interruptMins=0;
+    totalAsleep-=interruptMins;
+  }
+
+  // Cycles
+  const cycles=Math.floor(totalAsleep/90);
+  const quality=totalAsleep>=420?'good':totalAsleep>=300?'ok':'bad';
+  const qualityLabel=totalAsleep>=420?'Ótimo':'';
+  const qualityLabel2=totalAsleep>=420?'ideal':totalAsleep>=300?'ok':'curto';
+
+  // Build record
+  const rec={
+    id:Date.now(),
+    date,
+    bed,latency,wake,
+    hasInterrupt,intWake:hasInterrupt?intWake:'',intSleep:hasInterrupt?intSleep:'',
+    totalAsleep,interruptMins,cycles,quality
+  };
+
+  // Save
+  records=records.filter(r=>r.date!==date); // replace if same day
+  records.push(rec);
+  records.sort((a,b)=>b.date.localeCompare(a.date));
+  saveRecords(records);
+
+  // Show result
+  const rb=document.getElementById('result-box');
+  rb.classList.add('show');
+
+  document.getElementById('res-total').innerHTML=`${minsToHHMM(totalAsleep)} <span>dormidas</span>`;
+
+  const badges=document.getElementById('res-badges');
+  badges.innerHTML='';
+  const qcls=quality==='good'?'badge-green':quality==='ok'?'badge-yellow':'badge-red';
+  badges.innerHTML+=`<span class="badge ${qcls}">${totalAsleep>=420?'✓ Ideal':totalAsleep>=300?'~ Ok':'⚠ Curto'}</span>`;
+  badges.innerHTML+=`<span class="badge badge-purple">${cycles} ciclo${cycles!==1?'s':''}</span>`;
+  if(interruptMins>0)badges.innerHTML+=`<span class="badge" style="background:var(--red-bg);color:var(--red)">Interrompido ${minsToHHMM(interruptMins)}</span>`;
+
+  const bd=document.getElementById('res-breakdown');
+  bd.innerHTML=`
+    <div class="breakdown-row"><span>Deitou às</span><strong>${formatDisplayTime(bed)}</strong></div>
+    <div class="breakdown-row"><span>Adormeceu após</span><strong>${latency} min</strong></div>
+    ${hasInterrupt&&intWake?`<div class="breakdown-row"><span>Acordou às</span><strong>${formatDisplayTime(intWake)}</strong></div>`:''}
+    ${hasInterrupt&&intSleep?`<div class="breakdown-row"><span>Dormiu de novo às</span><strong>${formatDisplayTime(intSleep)}</strong></div>`:''}
+    ${interruptMins>0?`<div class="breakdown-row"><span>Tempo acordado</span><strong style="color:var(--red)">−${minsToHHMM(interruptMins)}</strong></div>`:''}
+    <div class="breakdown-row"><span>Acordou às</span><strong>${formatDisplayTime(wake)}</strong></div>
+    <div class="breakdown-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:10px"><span>Sono real</span><strong style="color:var(--accent-soft)">${minsToHHMM(totalAsleep)}</strong></div>`;
+
+  rb.scrollIntoView({behavior:'smooth',block:'nearest'});
+  showToast('✅ Noite salva com sucesso!');
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+function getWeekDates(offset){
+  const d=new Date();
+  d.setDate(d.getDate()-d.getDay()+1+offset*7); // Monday
+  const days=[];
+  for(let i=0;i<7;i++){
+    const dd=new Date(d);dd.setDate(d.getDate()+i);
+    days.push(dd.toISOString().split('T')[0]);
+  }
+  return days;
+}
+
+function changeWeek(dir){currentWeekOffset+=dir;renderDashboard();}
+
+function renderDashboard(){
+  if(!records.length){
+    document.getElementById('chart-container').innerHTML=`<div class="empty"><div class="empty-icon">📊</div><p>Registre noites de sono para ver o gráfico aparecer aqui.</p></div>`;
+    document.getElementById('s-avg').textContent='—';
+    document.getElementById('s-best').textContent='—';
+    document.getElementById('s-worst').textContent='—';
+    document.getElementById('s-count').textContent='0';
+    return;
+  }
+
+  // Stats all time
+  const all=records;
+  const avg=all.reduce((a,r)=>a+r.totalAsleep,0)/all.length;
+  const best=all.reduce((a,r)=>r.totalAsleep>a.totalAsleep?r:a,all[0]);
+  const worst=all.reduce((a,r)=>r.totalAsleep<a.totalAsleep?r:a,all[0]);
+
+  const qs=avg>=420?'good':avg>=300?'ok':'bad';
+  document.getElementById('s-avg').textContent=minsToHHMM(Math.round(avg));
+  document.getElementById('s-avg').className='stat-value '+qs;
+  document.getElementById('s-avg-sub').textContent='últimas '+all.length+' noites';
+  document.getElementById('s-best').textContent=minsToHHMM(best.totalAsleep);
+  document.getElementById('s-best-sub').textContent=fmtDate(best.date);
+  document.getElementById('s-worst').textContent=minsToHHMM(worst.totalAsleep);
+  document.getElementById('s-worst-sub').textContent=fmtDate(worst.date);
+  document.getElementById('s-count').textContent=all.length;
+
+  // Chart for current week
+  const days=getWeekDates(currentWeekOffset);
+  const dayNames=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+
+  // Week label
+  const wStart=fmtDateShort(days[0]);const wEnd=fmtDateShort(days[6]);
+  document.getElementById('week-label').textContent=`${wStart}–${wEnd}`;
+
+  const weekData=days.map(d=>{
+    const r=records.find(r=>r.date===d);
+    return r?r.totalAsleep:null;
+  });
+
+  const maxH=Math.max(...weekData.filter(v=>v!==null),480);
+  const chartH=140;
+
+  let barsHTML='';
+  weekData.forEach((val,i)=>{
+    if(val===null){
+      barsHTML+=`<div class="bar-col"><div class="bar-val"></div><div class="bar-outer" style="background:var(--surface);border-radius:6px"></div><div class="bar-day">${dayNames[i]}</div></div>`;
+    } else {
+      const pct=val/maxH;
+      const h=Math.max(pct*chartH,4);
+      const clr=val>=420?'var(--green)':val>=300?'var(--yellow)':'var(--red)';
+      const tip=minsToHHMM(val);
+      barsHTML+=`<div class="bar-col"><div class="bar-val" style="color:${clr};font-size:0.62rem">${Math.floor(val/60)}h</div><div class="bar-outer"><div class="bar-inner" data-tip="${tip}" style="height:${h}px;background:${clr};opacity:0.85"></div></div><div class="bar-day">${dayNames[i]}</div></div>`;
+    }
+  });
+
+  document.getElementById('chart-container').innerHTML=`<div class="bar-chart">${barsHTML}</div>`;
+}
+
+function fmtDate(d){const[y,m,dd]=d.split('-');return`${dd}/${m}`}
+function fmtDateShort(d){const[,m,dd]=d.split('-');return`${dd}/${m}`}
+
+// ─── History ─────────────────────────────────────────────────────────────────
+function renderHistory(){
+  const list=document.getElementById('history-list');
+  document.getElementById('hist-count').textContent=records.length+' registro'+(records.length!==1?'s':'');
+  if(!records.length){
+    list.innerHTML=`<div class="empty"><div class="empty-icon">🗓</div><p>Nenhuma noite registrada ainda.<br>Vá para a aba Registrar para começar.</p></div>`;
+    return;
+  }
+  list.innerHTML=records.map(r=>{
+    const qcls=r.quality==='good'?'badge-green':r.quality==='ok'?'badge-yellow':'badge-red';
+    const times=`${formatDisplayTime(r.bed)} → ${formatDisplayTime(r.wake)}`;
+    return`<div class="history-item">
+      <div class="hi-left">
+        <div class="hi-date">${fmtDateFull(r.date)}</div>
+        <div class="hi-times">${times}${r.hasInterrupt&&r.intWake?' · interrompido':''}</div>
+      </div>
+      <div class="hi-right">
+        <span class="badge ${qcls}">${minsToHHMM(r.totalAsleep)}</span>
+        <button class="hi-del" onclick="deleteRecord(${r.id})" title="Excluir">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function fmtDateFull(d){
+  const[y,m,dd]=d.split('-');
+  const months=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return`${dd} ${months[parseInt(m)-1]} ${y}`;
+}
+
+function deleteRecord(id){
+  records=records.filter(r=>r.id!==id);
+  saveRecords(records);
+  renderHistory();
+  showToast('🗑 Registro removido.');
+}
+
+function clearAll(){
+  if(!confirm('Tem certeza? Isso apagará todo o histórico de sono.'))return;
+  records=[];saveRecords([]);renderHistory();showToast('Histórico apagado.');
+}
+
+function exportCSV(){
+  if(!records.length){showToast('⚠️ Nenhum dado para exportar.');return;}
+  const header='Data,Deitou,Latência(min),Acordou,Interrupção(min),Total dormido(min),Horas,Ciclos,Qualidade';
+  const rows=records.map(r=>[
+    r.date,r.bed,r.latency,r.wake,r.interruptMins,r.totalAsleep,
+    (r.totalAsleep/60).toFixed(2),r.cycles,r.quality
+  ].join(','));
+  const csv=[header,...rows].join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='historico-sono.csv';
+  a.click();URL.revokeObjectURL(url);
+  showToast('📄 CSV exportado com sucesso!');
+}
+
+// ─── Alarm ───────────────────────────────────────────────────────────────────
+function playAlarmSound(vol=0.7,isTest=false){
+  const ctx=new(window.AudioContext||window.webkitAudioContext)();
+  const v=vol/100;
+  const gain=ctx.createGain();gain.gain.setValueAtTime(v,ctx.currentTime);gain.connect(ctx.destination);
+
+  const notes=isTest?[523,659,784]:[784,659,523,659,784,784,784];
+  const dur=isTest?0.15:0.18;
+  let t=ctx.currentTime;
+  notes.forEach(freq=>{
+    const osc=ctx.createOscillator();osc.type='sine';
+    osc.frequency.setValueAtTime(freq,t);
+    osc.connect(gain);osc.start(t);osc.stop(t+dur);
+    t+=dur+0.04;
+  });
+  setTimeout(()=>ctx.close(),isTest?2000:4000);
+}
+
+function testAlarm(){
+  const vol=parseInt(document.getElementById('alarm-vol').value);
+  playAlarmSound(vol,true);
+  showToast('🔊 Testando som...');
+}
+
+function setAlarm(){
+  const alarmTime=document.getElementById('alarm-time').value;
+  if(!alarmTime){showToast('⚠️ Defina um horário para o alarme.');return;}
+
+  if(alarmTimeout){clearTimeout(alarmTimeout);alarmTimeout=null;}
+
+  const now=new Date();
+  const[h,m]=alarmTime.split(':').map(Number);
+  let target=new Date(now);
+  target.setHours(h,m,0,0);
+  if(target<=now)target.setDate(target.getDate()+1);
+
+  const msUntil=target-now;
+  const vol=parseInt(document.getElementById('alarm-vol').value);
+
+  alarmTimeout=setTimeout(()=>{
+    for(let i=0;i<3;i++)setTimeout(()=>playAlarmSound(vol,false),i*2000);
+    document.getElementById('alarm-status').innerHTML=`<div class="alarm-active alarm-ringing"><div class="alarm-active-info"><strong>🔔 Acordar agora!</strong><span style="font-size:0.75rem">Toque o alarme</span></div><button class="btn-secondary" onclick="cancelAlarm()">Parar</button></div>`;
+    showToast('⏰ Despertador tocando!');
+  },msUntil);
+
+  const hrsUntil=Math.floor(msUntil/3600000);
+  const minsUntil=Math.floor((msUntil%3600000)/60000);
+  document.getElementById('alarm-status').innerHTML=`<div class="alarm-active"><div class="alarm-active-info"><strong>${alarmTime}</strong><span style="font-size:0.75rem">Em ${hrsUntil>0?hrsUntil+'h ':''}${minsUntil}min</span></div><button class="btn-secondary" onclick="cancelAlarm()">Cancelar</button></div>`;
+  showToast(`⏰ Alarme definido para ${alarmTime}`);
+}
+
+function cancelAlarm(){
+  if(alarmTimeout){clearTimeout(alarmTimeout);alarmTimeout=null;}
+  document.getElementById('alarm-status').innerHTML='';
+  showToast('Alarme cancelado.');
+}
+
+// ─── Toast ───────────────────────────────────────────────────────────────────
+let toastTimer=null;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  if(toastTimer)clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2800);
+}
+</script>
+</body>
+</html>
